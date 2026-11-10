@@ -420,6 +420,10 @@ while ((attempt < MAX_ATTEMPTS)); do
 
     log INFO "Инстанс создан. OCID: ${INSTANCE_ID} (AD ${ad})"
 
+    if [[ -n "${SUCCESS_MARKER_FILE:-}" ]]; then
+      printf '%s\n' "${INSTANCE_ID}" >"${SUCCESS_MARKER_FILE}" 2>/dev/null || true
+    fi
+
     notify_telegram "✅ Инстанс OCI ${SHAPE} создан!
 Имя: ${INSTANCE_NAME}
 AD: ${ad}

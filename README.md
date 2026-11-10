@@ -74,6 +74,34 @@ OCID созданного инстанса печатается в логе ша
 oci compute instance terminate --instance-id <INSTANCE_OCID> --preserve-boot-volume false
 ```
 
+## Запуск на своей VM (systemd, каждые 5 минут)
+
+Если встроенный `schedule` GitHub Actions задерживает или пропускает тики, надёжнее запускать скрипт прямо с вашей Linux VM (например, `E2.1.Micro`):
+
+1. Скопируйте локальные секреты на VM (с этого ПК в PowerShell):
+   ```powershell
+   scp "$HOME\.oci\github-secrets\OCI_CONFIG.txt" "$HOME\.oci\github-secrets\OCI_PRIVATE_KEY.txt" "$HOME\.oci\github-secrets\SSH_PUBLIC_KEY.txt" ubuntu@<VM_IP>:~/
+   ```
+2. На VM установите сервис и `systemd`-таймер (раз в 5 минут):
+   ```bash
+   git clone https://github.com/MaratelloMaJo/oci-a1-flex-auto.git
+   cd oci-a1-flex-auto
+   sudo bash scripts/install-vm.sh \
+     --oci-config ~/OCI_CONFIG.txt \
+     --oci-key ~/OCI_PRIVATE_KEY.txt \
+     --ssh-pub ~/SSH_PUBLIC_KEY.txt \
+     --telegram-token "<TELEGRAM_TOKEN>" \
+     --telegram-user-id "<TELEGRAM_USER_ID>"
+   rm -f ~/OCI_CONFIG.txt ~/OCI_PRIVATE_KEY.txt ~/SSH_PUBLIC_KEY.txt
+   ```
+3. Полезные команды на VM:
+   ```bash
+   systemctl list-timers oci-a1-flex.timer
+   journalctl -u oci-a1-flex.service -f
+   sudo systemctl start oci-a1-flex.service
+   ```
+   Когда инстанс будет создан, `/opt/oci-a1-flex/run.sh` автоматически отключит `oci-a1-flex.timer`.
+
 ## Заметки
 
 - **Диск.** Always Free даёт 200 GB на все boot volumes. Уже существующий `E2.1.Micro` занимает часть, поэтому дефолт `BOOT_VOLUME_GB=50`. Если увеличиваете — считайте: `200 − (boot volume E2.1.Micro)`.
