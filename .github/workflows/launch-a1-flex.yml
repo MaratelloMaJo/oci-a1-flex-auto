@@ -1,0 +1,88 @@
+name: "Try to create OCI A1.Flex"
+
+on:
+  schedule:
+    # Каждые 10 минут: компромисс между шансом поймать ёмкость и лимитами Actions.
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+# Параллельные запуски не нужны: второй встанет в очередь, а не начнёт
+# одновременно долбить OCI API.
+concurrency:
+  group: launch-a1-flex
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  launch:
+    name: "Попытка создать VM.Standard.A1.Flex"
+    runs-on: ubuntu-latest
+    # Следующий запуск через 10 минут; 4 минуты — с большим запасом.
+    timeout-minutes: 4
+
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v4
+
+      - name: "Установить OCI CLI и jq"
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet --upgrade pip
+          python3 -m pip install --quiet oci-cli
+          command -v jq >/dev/null || sudo apt-get install -y -qq jq
+          command -v curl >/dev/null || sudo apt-get install -y -qq curl
+          oci --version
+          jq --version
+
+      - name: "Проверить наличие секретов"
+        env:
+          OCI_CONFIG: ${{ secrets.OCI_CONFIG }}
+          OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
+          SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in OCI_CONFIG OCI_PRIVATE_KEY SSH_PUBLIC_KEY; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Секрет ${name} не задан. Добавьте его в Settings → Secrets and variables → Actions."
+              missing=1
+            fi
+          done
+          exit "${missing}"
+
+      - name: "Запустить попытку создания инстанса"
+        env:
+          OCI_CONFIG: ${{ secrets.OCI_CONFIG }}
+          OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
+          SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_USER_ID: ${{ secrets.TELEGRAM_USER_ID }}
+          # Необязательные переопределения через Repository variables.
+          COMPARTMENT_ID: ${{ vars.COMPARTMENT_ID }}
+          AVAILABILITY_DOMAINS: ${{ vars.AVAILABILITY_DOMAINS }}
+          IMAGE_ID: ${{ vars.IMAGE_ID }}
+          SUBNET_ID: ${{ vars.SUBNET_ID }}
+          INSTANCE_NAME: ${{ vars.INSTANCE_NAME || 'a1-flex-free' }}
+          OCPUS: ${{ vars.OCPUS || '2' }}
+          MEMORY_GB: ${{ vars.MEMORY_GB || '12' }}
+          BOOT_VOLUME_GB: ${{ vars.BOOT_VOLUME_GB || '50' }}
+          MAX_ATTEMPTS: ${{ vars.MAX_ATTEMPTS || '12' }}
+          SLEEP_SECONDS: ${{ vars.SLEEP_SECONDS || '10' }}
+          RATE_LIMIT_SLEEP_SECONDS: ${{ vars.RATE_LIMIT_SLEEP_SECONDS || '60' }}
+        run: |
+          bash scripts/launch-a1-flex.sh
+
+      - name: "Итог"
+        if: always()
+        run: |
+          set -uo pipefail
+          LOG_FILE="$HOME/.oci/a1-flex-launch.log"
+          if [ -f "${LOG_FILE}" ]; then
+            echo "----- последние строки лога -----"
+            tail -n 30 "${LOG_FILE}" || true
+            echo "---------------------------------"
+          else
+            echo "Лог не найден."
+          fi
