@@ -68,9 +68,9 @@ jobs:
           OCPUS: ${{ vars.OCPUS || '2' }}
           MEMORY_GB: ${{ vars.MEMORY_GB || '12' }}
           BOOT_VOLUME_GB: ${{ vars.BOOT_VOLUME_GB || '50' }}
-          MAX_ATTEMPTS: ${{ vars.MAX_ATTEMPTS || '12' }}
-          SLEEP_SECONDS: ${{ vars.SLEEP_SECONDS || '10' }}
-          RATE_LIMIT_SLEEP_SECONDS: ${{ vars.RATE_LIMIT_SLEEP_SECONDS || '60' }}
+          MAX_ATTEMPTS: ${{ vars.MAX_ATTEMPTS || '10' }}
+          SLEEP_SECONDS: ${{ vars.SLEEP_SECONDS || '15' }}
+          RATE_LIMIT_SLEEP_SECONDS: ${{ vars.RATE_LIMIT_SLEEP_SECONDS || '45' }}
         run: |
           bash scripts/launch-a1-flex.sh
 
