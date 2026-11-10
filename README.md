@@ -1,9 +1,9 @@
 # oci-a1-flex-auto
 
-GitHub Actions каждые 10 минут пытается создать бесплатный ARM-инстанс Oracle Cloud (`VM.Standard.A1.Flex`, Always Free: 2 OCPU / 12 GB RAM / 50 GB boot) и присылает в Telegram OCID, как только это удалось. Если ёмкости нет — перебирает Availability Domains по кругу и завершается без ошибки. Существующие инстансы (включая `VM.Standard.E2.1.Micro`) скрипт не трогает: он только вызывает `instance launch`.
+GitHub Actions каждые 5 минут пытается создать бесплатный ARM-инстанс Oracle Cloud (`VM.Standard.A1.Flex`, Always Free: 2 OCPU / 12 GB RAM / 50 GB boot) и присылает в Telegram OCID, как только это удалось. Если ёмкости нет — перебирает Availability Domains по кругу и завершается без ошибки. Существующие инстансы (включая `VM.Standard.E2.1.Micro`) скрипт не трогает: он только вызывает `instance launch`.
 
 ```
-GitHub Actions (cron */10, workflow_dispatch)
+GitHub Actions (cron */5, workflow_dispatch)
    └── scripts/launch-a1-flex.sh
          ├── разворачивает ~/.oci/config и ~/.oci/oci_api_key.pem из секретов
          ├── находит compartment (tenancy), AD, образ Ubuntu 22.04, публичную подсеть
@@ -79,6 +79,6 @@ oci compute instance terminate --instance-id <INSTANCE_OCID> --preserve-boot-vol
 - **Диск.** Always Free даёт 200 GB на все boot volumes. Уже существующий `E2.1.Micro` занимает часть, поэтому дефолт `BOOT_VOLUME_GB=50`. Если увеличиваете — считайте: `200 − (boot volume E2.1.Micro)`.
 - **Ёмкость.** `Out of host capacity` может длиться днями и неделями — это норма для Always Free ARM. Уменьшение до 1 OCPU / 6 GB иногда помогает.
 - **AMD vs ARM.** Лимиты AMD и ARM независимы; ваш `E2.1.Micro` не затрагивается.
-- **Минуты Actions.** Публичный репозиторий — стандартные раннеры бесплатны. В приватном на Free-плане всего 2000 минут/мес, а `*/10` даёт ~144 запуска в сутки × ~2–4 мин — лимит выгорит за считанные дни. Поэтому репозиторий публичный.
+- **Минуты Actions.** Публичный репозиторий — стандартные раннеры бесплатны. В приватном на Free-плане всего 2000 минут/мес, а `*/5` даёт ~288 запусков в сутки × ~2–4 мин — лимит выгорит за пару дней. Поэтому репозиторий публичный.
 - **Неактивность.** GitHub отключает scheduled workflows после ~60 дней без активности в репозитории: раз в 2 месяца делайте любой коммит.
 - **Секреты.** Значения секретов не попадают в логи, артефакты и комментарии workflow. `.gitignore` исключает `.oci/`, `*.pem`, `*.log`, `.env`. Никогда не коммитьте приватный ключ OCI в репозиторий.

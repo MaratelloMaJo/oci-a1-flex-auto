@@ -2,8 +2,8 @@ name: "Try to create OCI A1.Flex"
 
 on:
   schedule:
-    # Каждые 10 минут: компромисс между шансом поймать ёмкость и лимитами Actions.
-    - cron: "*/10 * * * *"
+    # Каждые 5 минут (минимальный поддерживаемый интервал cron в GitHub Actions).
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 # Параллельные запуски не нужны: второй встанет в очередь, а не начнёт
@@ -19,8 +19,8 @@ jobs:
   launch:
     name: "Попытка создать VM.Standard.A1.Flex"
     runs-on: ubuntu-latest
-    # Следующий запуск через 10 минут; 6 минут — с запасом на установку CLI.
-    timeout-minutes: 6
+    # Следующий запуск через 5 минут; ограничиваем job 5 минутами, чтобы не копить очередь.
+    timeout-minutes: 5
 
     steps:
       - name: "Checkout"
@@ -71,6 +71,7 @@ jobs:
           MAX_ATTEMPTS: ${{ vars.MAX_ATTEMPTS || '10' }}
           SLEEP_SECONDS: ${{ vars.SLEEP_SECONDS || '15' }}
           RATE_LIMIT_SLEEP_SECONDS: ${{ vars.RATE_LIMIT_SLEEP_SECONDS || '45' }}
+          MAX_RUNTIME_SECONDS: ${{ vars.MAX_RUNTIME_SECONDS || '220' }}
         run: |
           bash scripts/launch-a1-flex.sh
 
