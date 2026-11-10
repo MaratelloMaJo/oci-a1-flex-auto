@@ -19,8 +19,8 @@ jobs:
   launch:
     name: "Попытка создать VM.Standard.A1.Flex"
     runs-on: ubuntu-latest
-    # Следующий запуск через 10 минут; 4 минуты — с большим запасом.
-    timeout-minutes: 4
+    # Следующий запуск через 10 минут; 6 минут — с запасом на установку CLI.
+    timeout-minutes: 6
 
     steps:
       - name: "Checkout"

@@ -48,13 +48,13 @@ BOOT_VOLUME_GB="${BOOT_VOLUME_GB:-50}"
 INSTANCE_NAME="${INSTANCE_NAME:-a1-flex-free}"
 
 # Сколько попыток за запуск и паузы между ними.
-MAX_ATTEMPTS="${MAX_ATTEMPTS:-12}"
-SLEEP_SECONDS="${SLEEP_SECONDS:-10}"
-RATE_LIMIT_SLEEP_SECONDS="${RATE_LIMIT_SLEEP_SECONDS:-60}"
+MAX_ATTEMPTS="${MAX_ATTEMPTS:-10}"
+SLEEP_SECONDS="${SLEEP_SECONDS:-15}"
+RATE_LIMIT_SLEEP_SECONDS="${RATE_LIMIT_SLEEP_SECONDS:-45}"
 
-# Жёсткий дедлайн скрипта: workflow убивает job через 4 минуты,
-# поэтому выходим сами и успеваем записать лог.
-MAX_RUNTIME_SECONDS="${MAX_RUNTIME_SECONDS:-200}"
+# Жёсткий дедлайн скрипта. Workflow даёт 6 минут на job, из них ~1 минута
+# уходит на checkout и установку OCI CLI, поэтому 300 с — безопасный предел.
+MAX_RUNTIME_SECONDS="${MAX_RUNTIME_SECONDS:-300}"
 
 # ---------------------------------------------------------------------------
 # 2. Служебные пути
@@ -128,6 +128,33 @@ require_cmd() {
 validate_number() {
   local name="$1" value="$2" pattern="$3"
   [[ "${value}" =~ ${pattern} ]] || die "Параметр ${name}='${value}' имеет неверный формат."
+}
+
+# Сколько секунд осталось до дедлайна (0, если бюджет исчерпан).
+remaining_seconds() {
+  local elapsed=$(( $(date +%s) - START_TS ))
+  local left=$(( MAX_RUNTIME_SECONDS - elapsed ))
+  if ((left > 0)); then
+    printf '%s\n' "${left}"
+  else
+    printf '0\n'
+  fi
+}
+
+# sleep_within_budget <секунды> — спит не дольше остатка бюджета.
+# Возвращает 1, если бюджета уже нет (тогда цикл должен завершиться).
+sleep_within_budget() {
+  local want="$1" left
+  left=$(remaining_seconds)
+  if ((left <= 0)); then
+    return 1
+  fi
+  if ((want > left)); then
+    log WARN "Бюджет времени почти исчерпан — пауза ${left} с вместо ${want} с."
+    want="${left}"
+  fi
+  sleep "${want}"
+  return 0
 }
 
 # Разворачиваем секреты из env в файлы. Значения НЕ печатаем.
@@ -350,8 +377,9 @@ trap 'rm -f "${ERR_FILE}"' EXIT
 START_INDEX=$(( $(date +%M) % ${#ADS[@]} ))
 
 attempt=0
+rate_hits=0
 while ((attempt < MAX_ATTEMPTS)); do
-  if (($(date +%s) - START_TS >= MAX_RUNTIME_SECONDS)); then
+  if (($(remaining_seconds) <= 0)); then
     log WARN "Истёк лимит времени (${MAX_RUNTIME_SECONDS} с) — завершаемся."
     break
   fi
@@ -384,7 +412,9 @@ while ((attempt < MAX_ATTEMPTS)); do
     if [[ -z "${INSTANCE_ID}" ]]; then
       log WARN "OCI вернул успех, но OCID не найден — повторяем."
       LAST_CLASS="other"
-      sleep "${SLEEP_SECONDS}"
+      if ! sleep_within_budget "${SLEEP_SECONDS}"; then
+        break
+      fi
       continue
     fi
 
@@ -413,8 +443,17 @@ Settings → Actions → Try to create OCI A1.Flex → Disable."
       # Ёмкости нет — идём к следующему AD.
       ;;
     rate)
+      rate_hits=$((rate_hits + 1))
+      if ((rate_hits >= 2)); then
+        # Второй 429 за запуск: дальше долбить API бессмысленно — следующий
+        # запуск по расписанию произойдёт через 10 минут.
+        log WARN "Повторный 429 TooManyRequests — прекращаем попытки до следующего запуска."
+        break
+      fi
       log WARN "Rate limit OCI — пауза ${RATE_LIMIT_SLEEP_SECONDS} с."
-      sleep "${RATE_LIMIT_SLEEP_SECONDS}"
+      if ! sleep_within_budget "${RATE_LIMIT_SLEEP_SECONDS}"; then
+        break
+      fi
       continue
       ;;
     fatal-auth)
@@ -433,8 +472,15 @@ Settings → Actions → Try to create OCI A1.Flex → Disable."
       ;;
   esac
 
-  sleep "${SLEEP_SECONDS}"
+  if ! sleep_within_budget "${SLEEP_SECONDS}"; then
+    log WARN "Бюджет времени исчерпан — завершаемся, следующий запуск по расписанию."
+    break
+  fi
 done
 
-log INFO "Свободной ёмкости A1.Flex не нашлось за ${attempt} попыток. Следующий запуск — по расписанию."
+if [[ "${LAST_CLASS}" == "rate" ]]; then
+  log INFO "OCI ограничил частоту запросов после ${attempt} попыток. Следующий запуск — по расписанию."
+else
+  log INFO "Свободной ёмкости A1.Flex не нашлось за ${attempt} попыток. Следующий запуск — по расписанию."
+fi
 exit 0
